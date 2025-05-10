@@ -284,7 +284,7 @@ class MikrotikKidcontrolPauseSwitch(MikrotikSwitch):
         path = self.entity_description.data_switch_path
         param = self.entity_description.data_reference
         value = self._data[self.entity_description.data_reference]
-        command = "resume"
+        command = "pause"
         await self.hass.async_add_executor_job(
             self.coordinator.execute, path, command, param, value
         )
@@ -297,7 +297,7 @@ class MikrotikKidcontrolPauseSwitch(MikrotikSwitch):
         path = self.entity_description.data_switch_path
         param = self.entity_description.data_reference
         value = self._data[self.entity_description.data_reference]
-        command = "pause"
+        command = "resume"
         await self.hass.async_add_executor_job(
             self.coordinator.execute, path, command, param, value
         )
