@@ -21,7 +21,13 @@ Monitor and control your entire MikroTik network from Home Assistant. This HACS 
 
 ---
 
-## What's New — v2.3.14
+## What's New — v2.3.15
+
+**Two reported bugs fixed:**
+- **UPS package installed but no UPS configured no longer breaks the integration** — On routers with the UPS package enabled but `/system/ups` empty, the integration was issuing a `monitor` query that RouterOS rejected with "no such item", causing a full coordinator disconnect ("Mikrotik Disconnected"). Addresses [#61](https://github.com/jnctech/homeassistant-mikrotik_router/issues/61).
+- **PoE out current value corrected** — The sensor was declared in amperes while RouterOS reports the value in milliamperes, causing displayed values to be 1000× too large (e.g. `1234.56 mA` for a ~25 mA load). Addresses [#60](https://github.com/jnctech/homeassistant-mikrotik_router/issues/60).
+
+## v2.3.14
 
 **librouteros 4.x hotfix** — Pin `librouteros<4.0` in `manifest.json`. Version 4.0.1 of librouteros renamed `connect()`'s `login_methods` kwarg to `login_method`, breaking every install that auto-upgraded. Addresses [#55](https://github.com/jnctech/homeassistant-mikrotik_router/issues/55) and [#56](https://github.com/jnctech/homeassistant-mikrotik_router/issues/56). Proper 4.x migration will ship in a future release.
 

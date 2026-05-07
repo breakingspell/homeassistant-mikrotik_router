@@ -11,6 +11,45 @@
 
 ## Active
 
+### ISS-260507-ups-empty-path — Empty `/system/ups` path disconnects the integration
+**Type:** Bug
+**Priority:** High
+**Created:** 2026-05-07
+**Status:** 🔴 Closed — fixed in v2.3.15 (PR for `fix/v2.3.15-ups-poe-current`)
+
+**Symptom:**
+On routers with the UPS package enabled but no UPS configured, the integration tile shows "Failed setup, will retry: Mikrotik Disconnected" and never loads. Logs:
+```
+ERROR ... Mikrotik <host> error while path : no such item
+DEBUG ... Finished fetching ... data in 3.380 seconds (success: False)
+```
+Reported in #61 (RouterOS 7.22.1 on CCR2116-12G-4S+).
+
+**Root cause:**
+`coordinator.get_ups()` always issued the `/system/ups monitor` query because the parsed `enabled` field defaulted to `True` when `/system/ups` was empty. The `vals` entry for `enabled` uses `source="disabled"` with `reverse=True`; `from_entry_bool` returns `not default` when the source key is missing, so `enabled` becomes `True` for an empty path. RouterOS then rejects `monitor` with "no such item", and `_query_command` treats it as a connection failure.
+
+**Fix:**
+Bail out of `get_ups()` early when `/system/ups` returns no entries — clear `ds["ups"]` and skip both `parse_api` and the `monitor` query.
+
+---
+
+### ISS-260507-poe-current-unit — PoE out current displayed 1000× too large
+**Type:** Bug
+**Priority:** Medium
+**Created:** 2026-05-07
+**Status:** 🔴 Closed — fixed in v2.3.15 (PR for `fix/v2.3.15-ups-poe-current`)
+
+**Symptom:**
+PoE out current sensor displays `~1234.56 mA` for a port drawing ~25 mA (DE locale shows `1.234,56 mA`). Reported in #60 (RB5009UPr+S+IN, RouterOS 7.22.2).
+
+**Root cause:**
+`sensor_types.py` declared `poe_out_current` with `native_unit_of_measurement=AMPERE` and `suggested_unit_of_measurement=MILLIAMPERE`. RouterOS reports the value already in milliamperes (test fixtures use raw integers like `180`, `310`), so HA's unit conversion turned `180 A → 180000 mA`.
+
+**Fix:**
+Set `native_unit_of_measurement=MILLIAMPERE`; remove `suggested_unit_of_measurement`.
+
+---
+
 ### ISS-260417-librouteros-4x-break — librouteros 4.0.1 breaks connection for all users
 **Type:** Bug
 **Priority:** Critical
