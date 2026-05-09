@@ -2,14 +2,53 @@
 
 ## Current Priorities
 
-1. ISS-260417-librouteros-4x-break — librouteros 4.0.1 breaks `connect()` kwarg; all users affected (hotfix v2.3.14 pins `<4.0`)
-2. ISS-260320-new-device-discovery — New devices require HA restart to appear
-3. ISS-260320-refactor-dedup — Refactor duplicated patterns
-4. ISS-260326-tracker-wireless-detection — Device tracker uses old wireless detection logic
+1. ISS-260509-mikrotikapi-concurrency — `set_value`/`execute` iterate the librouteros response outside the API lock; rapid switch toggles can corrupt the socket stream and disconnect the integration (#64)
+2. ISS-260509-ha-2026.5-untested — HA 2026.5.0 / Python 3.14 not yet validated against the integration; testing planned
+3. ISS-260417-librouteros-4x-break — librouteros 4.0.1 breaks `connect()` kwarg; all users affected (hotfix v2.3.14 pins `<4.0`)
+4. ISS-260320-new-device-discovery — New devices require HA restart to appear
+5. ISS-260320-refactor-dedup — Refactor duplicated patterns
+6. ISS-260326-tracker-wireless-detection — Device tracker uses old wireless detection logic
 
 ---
 
 ## Active
+
+### ISS-260509-mikrotikapi-concurrency — set_value/execute corrupt socket under rapid use
+**Type:** Bug
+**Priority:** High
+**Created:** 2026-05-09
+**Status:** 🟡 In Progress — fix in `fix/api-concurrency-lock` (v2.3.16)
+
+**Symptom:**
+Rapidly toggling PoE switches in the HA UI causes the integration to disconnect. Traceback shows librouteros' `parse_word` raising `ValueError: not enough values to unpack (expected 3, got 2)` while iterating the response inside `_find_entry`. Subsequent polls then time out with `building list for path /ip/arp : timed out` and the coordinator marks itself disconnected. Reported in #64 (RB5009UPr+S+IN, RouterOS 7.22.2, HA 2026.5.0 / Python 3.14).
+
+**Root cause:**
+`MikrotikAPI.set_value()` and `MikrotikAPI.execute()` call `query(path, return_list=False)` which returns the librouteros `Path` object **outside** the API lock. They then call `_find_entry(response, ...)` — which iterates the Path and performs additional socket reads — also **outside** the lock. The 30s coordinator poll (`get_arp`, `get_health`, etc.) acquires the lock and reads from the same TCP socket concurrently. The librouteros parser sees a half-finished sentence from the interleaved reads and raises. `run_script()` already does this correctly (iterates inside the lock), so it was the model for the fix.
+
+**Fix:**
+Move `_find_entry` and the subsequent `response.update()` / `response(command, **params)` calls inside the existing `with self.lock:` block in `set_value` and `execute`. No public API changes.
+
+**Why this just surfaced:**
+The race has existed since the current `set_value`/`execute` shape was introduced. HA moved to Python 3.14 in [2026.3](https://www.home-assistant.io/blog/2026/03/04/release-20263/#running-on-python-314-), so the runtime change alone doesn't explain the timing — there were no reports of this race during the 2026.3 / 2026.4 windows. The first report (#64) is against 2026.5.0; whether 2026.5.0 changed something specific (service dispatch timing, executor pool sizing, or similar) is still being investigated. Either way the lock fix is correct and the race must be closed regardless of cause. Reporter confirmation requested in the GH thread (rollback test against v2.3.14).
+
+---
+
+### ISS-260509-ha-2026.5-untested — HA 2026.5.0 not yet validated
+**Type:** Compatibility
+**Priority:** Medium
+**Created:** 2026-05-09
+**Status:** 🟡 Backlog
+
+**Context:**
+HA 2026.5.0 (released 2026-05-06) is the first version where a user (#64) has reported the integration breaking. HA has been on Python 3.14 since [2026.3](https://www.home-assistant.io/blog/2026/03/04/release-20263/#running-on-python-314-), so the runtime alone isn't a sufficient explanation — the race in `set_value`/`execute` was present in 2026.3 and 2026.4 too without prior reports. The integration's CI matrix and local dev environment still target Python 3.13.
+
+**Plan:**
+- Add Python 3.14 to the CI matrix for the test job
+- Validate the integration manually against HA 2026.5.0 (PoE switching, device tracker, sensors, services)
+- Diff HA 2026.4 → 2026.5 release notes / commits for service-dispatch or executor-pool changes that could explain why #64 surfaced now
+- Document any 2026.5.0-specific behaviour in README compatibility notes
+
+---
 
 ### ISS-260507-ups-empty-path — Empty `/system/ups` path disconnects the integration
 **Type:** Bug
