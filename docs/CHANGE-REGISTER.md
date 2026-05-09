@@ -4,6 +4,41 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260509-fix-api-concurrency-lock — v2.3.16: hold API lock around set_value/execute response iteration
+
+**Date:** 2026-05-09
+**Branch:** `fix/api-concurrency-lock`
+**Status:** In Review (targeting master)
+
+### What Changed
+
+| Area | Change |
+|------|--------|
+| `mikrotikapi.py` | `set_value()` and `execute()` now wrap `_find_entry()` and the subsequent `response.update()` / `response(command, **params)` call inside the existing `with self.lock:` block. Previously the iteration ran outside the lock and could interleave with concurrent coordinator polls reading from the same TCP socket. |
+| `manifest.json` | Bump version 2.3.15 → 2.3.16 |
+| `tests/test_mikrotikapi.py` | 2 new regression tests verifying `_find_entry` runs while the API lock is held in both `set_value` and `execute` |
+| `README.md`, `info.md` | v2.3.16 release notes; note HA 2026.5.0 / Python 3.14 not yet validated |
+| `docs/ISSUES.md` | Open ISS-260509-mikrotikapi-concurrency (the bug fix) |
+| `docs/ISSUES.md` | Open ISS-260509-ha-2026.5-untested (compatibility tracking) |
+
+### Why
+
+Reported in #64: rapidly toggling PoE switches on a `RB5009UPr+S+IN` running HA 2026.5.0 caused librouteros' `parse_word` to raise `ValueError: not enough values to unpack` mid-iteration, followed by `Mikrotik Disconnected`. Root cause is a pre-existing race in `set_value`/`execute`: both methods iterated the librouteros `Path` object — which performs further socket reads — outside the API lock. A concurrent coordinator poll could then read from the same socket and the parser saw a half-finished sentence. `run_script()` already followed the correct pattern.
+
+### Why this surfaced now
+
+The race has existed for many releases but was rarely triggered on Python 3.13. HA 2026.5.0 shipped with Python 3.14, which retuned thread scheduling and GIL release granularity. Races that were rare on 3.13 are now easy to hit on 3.14 — particularly under workloads that issue rapid switch toggles.
+
+### Quality Gate Results
+
+| Metric | Value | Gate |
+|--------|-------|------|
+| Ruff lint | pending | ⏳ (CI) |
+| Ruff format | pending | ⏳ (CI) |
+| Tests | 2 new regression tests, full suite via CI | ⏳ (CI) |
+
+---
+
 ## CR-260507-hotfix-ups-poe-current — v2.3.15 hotfix: empty UPS path + PoE current unit
 
 **Date:** 2026-05-07
